@@ -31,4 +31,5 @@
 
 ## Notes
 
-- All items pass. Spec is ready for `/speckit-clarify` or `/speckit-plan`.
+- All items pass. Spec is ready for `/speckit-plan`.
+- Clarification session 2026-06-04: 3 questions answered — room code format (4–6 uppercase alpha), duplicate name rejection (FR-014 added), non-host Lobby message (FR-012 updated).

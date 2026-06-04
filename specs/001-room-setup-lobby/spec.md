@@ -40,6 +40,7 @@ A player wants to join a game created by someone else. They enter the room code 
 2. **Given** the Join Room form is displayed, **When** a player submits with an empty or whitespace-only name, **Then** the player is not added and a clear error message is shown.
 3. **Given** the Join Room form is displayed, **When** a player submits with an empty, whitespace-only, or non-existent room code, **Then** the join is rejected and a clear error message is shown indicating the code is invalid.
 4. **Given** two rooms exist simultaneously, **When** a player joins one room, **Then** the other room's participant list is unaffected.
+5. **Given** a player named "Alice" is already in a room, **When** a second player attempts to join the same room with the name "Alice" (or "alice" after trimming), **Then** the join is rejected and a clear error message states the name is already taken.
 
 ---
 
@@ -70,7 +71,7 @@ Once at least 2 players are present in the Lobby, the host can start the game. N
 
 1. **Given** only 1 player is in the Lobby, **When** the host views the Lobby screen, **Then** the Start Game button is visible but disabled, with a message indicating more players are needed.
 2. **Given** at least 2 players are in the Lobby, **When** the host views the Lobby screen, **Then** the Start Game button becomes enabled.
-3. **Given** at least 2 players are in the Lobby, **When** a non-host player views the Lobby screen, **Then** the Start Game button is either absent or non-interactive for that player.
+3. **Given** at least 2 players are in the Lobby, **When** a non-host player views the Lobby screen, **Then** no Start Game button is shown to that player; instead, a "Waiting for host to start the game…" message is displayed.
 4. **Given** the host clicks Start Game with at least 2 players present, **When** the action is submitted, **Then** the game transitions out of the Lobby state (progression to the Game Start scenario is handled in a separate spec).
 
 ---
@@ -82,6 +83,15 @@ Once at least 2 players are present in the Lobby, the host can start the game. N
 - What happens if the player name contains only spaces? → Treated as empty; create/join is rejected with an error message.
 - What happens if the backend restarts while players are in the Lobby? → All room state is lost (in-memory only); this is a known limitation and out of scope to handle gracefully.
 - What happens when multiple rooms exist simultaneously? → Each room is isolated; participants, codes, and state do not bleed between rooms.
+- What happens if a player tries to join with a name already used in that room? → The join is rejected with a clear error message; the player must choose a different name.
+
+## Clarifications
+
+### Session 2026-06-04
+
+- Q: What is the format of room codes? → A: 4–6 uppercase alphabetic characters (e.g., `WXYZ`)
+- Q: What happens if two players in the same room try to use the same name? → A: Reject the join; show a clear error message that the name is already taken in that room
+- Q: What do non-host players see in the Lobby while waiting for the game to start? → A: No Start Game button; a "Waiting for host to start the game…" message is displayed instead
 
 ## Requirements *(mandatory)*
 
@@ -89,23 +99,24 @@ Once at least 2 players are present in the Lobby, the host can start the game. N
 
 - **FR-001**: The system MUST allow a player to create a new room by entering a non-empty, non-whitespace-only name.
 - **FR-002**: The system MUST automatically assign the room creator the role of host.
-- **FR-003**: The system MUST generate a unique room code for each newly created room.
+- **FR-003**: The system MUST generate a unique room code for each newly created room. Room codes MUST consist of 4–6 uppercase alphabetic characters (e.g., `WXYZ`).
 - **FR-004**: The system MUST allow a player to join an existing room by entering a valid room code and a non-empty, non-whitespace-only name.
 - **FR-005**: The system MUST reject join attempts that use a room code that does not correspond to any existing room, and MUST display a clear error message.
 - **FR-006**: The system MUST reject create and join attempts where the player name is empty or whitespace-only, and MUST display a clear error message.
+- **FR-014**: The system MUST reject a join attempt if the trimmed player name is already in use by another participant in the same room, and MUST display a clear error message indicating the name is taken.
 - **FR-007**: The Lobby screen MUST display the room code and the current list of participants.
 - **FR-008**: The Lobby screen MUST automatically refresh the participant list at approximately 2-second intervals without requiring manual user action.
 - **FR-009**: The system MUST display a Start Game button visible to the host on the Lobby screen.
 - **FR-010**: The Start Game button MUST be disabled when fewer than 2 players are in the room, with a message indicating more players are needed.
 - **FR-011**: The Start Game button MUST become enabled when at least 2 players are present.
-- **FR-012**: Non-host players MUST NOT be able to start the game from the Lobby screen.
+- **FR-012**: Non-host players MUST NOT see a Start Game button on the Lobby screen. Instead, a "Waiting for host to start the game…" message MUST be displayed.
 - **FR-013**: Each room MUST be fully isolated — participants, state, and codes MUST NOT bleed between rooms.
 
 ### Key Entities
 
 - **Room**: Represents a game session. Has a unique code, a list of participants, and a designated host. Created fresh for each game; destroyed when the backend restarts.
 - **Participant**: A player in a room. Has a name and a flag indicating whether they are the host. Names are trimmed of leading/trailing whitespace before storage.
-- **Room Code**: A short, unique identifier used to join a specific room. Generated at room creation and shared by the host.
+- **Room Code**: A short, unique identifier used to join a specific room. Consists of 4–6 uppercase alphabetic characters (e.g., `WXYZ`). Generated at room creation and shared by the host.
 
 ## Success Criteria *(mandatory)*
 
@@ -121,10 +132,11 @@ Once at least 2 players are present in the Lobby, the host can start the game. N
 ## Assumptions
 
 - Player names are trimmed of leading/trailing whitespace before validation; a name that becomes empty after trimming is rejected.
-- Room codes are case-insensitive when matching (e.g., "ABC1" and "abc1" refer to the same room); this is assumed as a usability default.
+- Room codes consist of 4–6 uppercase alphabetic characters. Matching is case-insensitive (e.g., `WXYZ` and `wxyz` refer to the same room) as a usability default.
 - The minimum number of players required to start a game is exactly 2.
 - There is no maximum room size defined for this scenario; the system accepts any number of participants.
 - All room state is held in server memory only; a backend restart clears all rooms. This is a known constraint, not a bug.
 - The game transition triggered by Start Game (drawer assignment, word selection, etc.) is out of scope for this spec and covered in the Game Start & Drawer Flow spec.
 - No authentication is required; any player can create or join a room with just a name.
 - Room codes are generated by the server, not chosen by the player.
+- Player names are unique within a room (case-insensitive comparison after trimming); duplicate names are rejected at join time.
