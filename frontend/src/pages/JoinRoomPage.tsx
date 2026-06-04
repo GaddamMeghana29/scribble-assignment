@@ -7,18 +7,34 @@ export function JoinRoomPage() {
   const [playerName, setPlayerName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const roomStore = useRoomStore();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const trimmedName = playerName.trim();
+    const trimmedCode = roomCode.trim().toUpperCase();
+
+    if (!trimmedName) {
+      setError("Player name is required");
+      return;
+    }
+
+    if (!trimmedCode) {
+      setError("Room code is required");
+      return;
+    }
 
     try {
       setError(null);
-      await roomStore.joinRoom(roomCode.toUpperCase(), playerName);
+      setIsSubmitting(true);
+      await roomStore.joinRoom(trimmedCode, trimmedName);
       navigate("/lobby");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to join room");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -51,8 +67,8 @@ export function JoinRoomPage() {
         </label>
         {error ? <p className="form__error">{error}</p> : null}
         <div className="button-row">
-          <button className="button button--primary" type="submit">
-            Join Lobby
+          <button className="button button--primary" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Joining..." : "Join Lobby"}
           </button>
           <button className="button button--secondary" type="button" onClick={() => navigate("/")}>
             Back

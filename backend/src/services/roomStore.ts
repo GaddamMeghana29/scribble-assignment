@@ -9,7 +9,7 @@ function now() {
 }
 
 function generateCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   let code = "";
 
   for (let index = 0; index < 4; index += 1) {
@@ -29,14 +29,11 @@ function generateUniqueCode() {
   return code;
 }
 
-function displayName(name?: string) {
-  return name || "Player";
-}
-
-function createParticipant(name?: string): Participant {
+function createParticipant(name: string, isHost: boolean): Participant {
   return {
     id: randomUUID(),
-    name: displayName(name),
+    name,
+    isHost,
     joinedAt: now()
   };
 }
@@ -49,8 +46,8 @@ export function listWords() {
   return [...STARTER_WORDS];
 }
 
-export function createRoom(playerName?: string) {
-  const participant = createParticipant(playerName);
+export function createRoom(playerName: string) {
+  const participant = createParticipant(playerName.trim(), true);
   const room: Room = {
     code: generateUniqueCode(),
     status: "lobby",
@@ -67,14 +64,23 @@ export function createRoom(playerName?: string) {
   };
 }
 
-export function joinRoom(code: string, playerName?: string) {
+export function joinRoom(code: string, playerName: string) {
   const room = rooms.get(code);
 
   if (!room) {
     return null;
   }
 
-  const participant = createParticipant(playerName);
+  const trimmedName = playerName.trim();
+  const nameTaken = room.participants.some(
+    (p) => p.name.trim().toLowerCase() === trimmedName.toLowerCase()
+  );
+
+  if (nameTaken) {
+    return { error: "name_taken" as const };
+  }
+
+  const participant = createParticipant(trimmedName, false);
   room.participants.push(participant);
   room.updatedAt = now();
   rooms.set(room.code, room);
@@ -94,6 +100,26 @@ export function saveRoom(room: Room) {
   room.updatedAt = now();
   rooms.set(room.code, cloneRoom(room));
   return getRoom(room.code);
+}
+
+export function startRoom(code: string, participantId: string) {
+  const room = rooms.get(code);
+
+  if (!room) {
+    return { error: "room_not_found" as const };
+  }
+
+  const caller = room.participants.find((p) => p.id === participantId);
+
+  if (!caller?.isHost) {
+    return { error: "not_host" as const };
+  }
+
+  if (room.participants.length < 2) {
+    return { error: "too_few_players" as const };
+  }
+
+  return { room: cloneRoom(room) };
 }
 
 export function toRoomSnapshot(room: Room, viewerParticipantId?: string): RoomSnapshot {
