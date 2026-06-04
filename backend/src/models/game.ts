@@ -1,5 +1,5 @@
 export type ParticipantRole = "drawer" | "guesser";
-export type RoomStatus = "lobby" | "game";
+export type RoomStatus = "lobby" | "game" | "ended";
 
 export interface StrokePoint {
   x: number;

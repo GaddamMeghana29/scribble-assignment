@@ -26,7 +26,7 @@ export interface Participant {
 
 export interface RoomSnapshot {
   code: string;
-  status: "lobby" | "game";
+  status: "lobby" | "game" | "ended";
   participants: Participant[];
   drawerId: string | null;
   currentWord: string | null;
@@ -98,5 +98,11 @@ export const api = {
       `/rooms/${encodeURIComponent(code)}/guesses`,
       { method: "POST", body: JSON.stringify({ participantId, text }) }
     );
+  },
+  resetRoom(code: string, participantId: string) {
+    return request<{ room: RoomSnapshot }>(`/rooms/${encodeURIComponent(code)}/reset`, {
+      method: "POST",
+      body: JSON.stringify({ participantId })
+    });
   }
 };

@@ -168,9 +168,28 @@ export function submitGuess(code: string, participantId: string, text: string) {
     submittedAt: now()
   };
   room.guesses.push(guess);
+  if (isCorrect) {
+    room.status = "ended";
+  }
   room.updatedAt = now();
   rooms.set(room.code, room);
   return { isCorrect, guess: { ...guess } };
+}
+
+export function resetRoom(code: string, participantId: string) {
+  const room = rooms.get(code);
+  if (!room) return { error: "room_not_found" as const };
+  const caller = room.participants.find((p) => p.id === participantId);
+  if (!caller?.isHost) return { error: "not_host" as const };
+  if (room.status !== "ended") return { error: "not_ended" as const };
+  room.status = "lobby";
+  room.drawerId = null;
+  room.currentWord = null;
+  room.strokes = [];
+  room.guesses = [];
+  room.updatedAt = now();
+  rooms.set(room.code, room);
+  return { room: cloneRoom(room) };
 }
 
 export function toRoomSnapshot(room: Room, viewerParticipantId?: string): RoomSnapshot {
@@ -181,7 +200,7 @@ export function toRoomSnapshot(room: Room, viewerParticipantId?: string): RoomSn
     status: room.status,
     participants: room.participants.map((participant) => ({ ...participant })),
     drawerId: room.drawerId,
-    currentWord: isDrawer ? room.currentWord : null,
+    currentWord: (isDrawer || room.status === "ended") ? room.currentWord : null,
     wordLength: room.currentWord?.length ?? null,
     strokes: room.strokes.map((s) => ({ points: [...s.points] })),
     guesses: room.guesses.map((g) => ({ ...g })),

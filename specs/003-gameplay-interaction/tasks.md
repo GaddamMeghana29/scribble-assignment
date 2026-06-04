@@ -97,7 +97,7 @@
 - [x] T028 [P] Run `cd backend && npm run build` — confirm zero TypeScript errors
 - [x] T029 [P] Run `cd frontend && npm run build` — confirm zero TypeScript errors
 - [x] T030 Run `cd backend && npm test` — confirm all unit tests pass (depends on T028)
-- [x] T031 Complete two-browser-tab (and optional three-tab for simultaneous correct guesses) verification per `specs/003-gameplay-interaction/quickstart.md` acceptance checklist (depends on T029, T030)
+- [x] T031 Complete two-browser-tab (and optional three-tab for simultaneous correct guesses) verification per `specs/003-gameplay-interaction/quickstart.md` acceptance checklist (depends on T029, T030) — verified working 2026-06-04
 
 ---
 

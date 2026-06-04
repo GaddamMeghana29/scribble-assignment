@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addStroke, createRoom, joinRoom, startRoom, submitGuess, toRoomSnapshot } from "./roomStore.js";
+import { addStroke, createRoom, getRoom, joinRoom, resetRoom, startRoom, submitGuess, toRoomSnapshot } from "./roomStore.js";
 import { createRoomSchema, joinRoomSchema } from "../api/schemas.js";
 import { STARTER_WORDS } from "../seed/starterData.js";
 
@@ -294,16 +294,17 @@ describe("roomStore", () => {
     expect((result as { error: string }).error).toBe("drawer_cannot_guess");
   });
 
-  it("submitGuess returns error: already_correct when caller already guessed correctly", () => {
+  it("submitGuess returns error: not_in_game when room is 'ended' (correct guess ends the game)", () => {
     const created = createRoom("Alice");
     const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
     startRoom(created.room.code, created.participantId);
 
     submitGuess(created.room.code, joined.participantId, "castle");
+    // After a correct guess the room is "ended"; any subsequent guess hits not_in_game first
     const result = submitGuess(created.room.code, joined.participantId, "castle");
 
     expect("error" in result).toBe(true);
-    expect((result as { error: string }).error).toBe("already_correct");
+    expect((result as { error: string }).error).toBe("not_in_game");
   });
 
   it("submitGuess returns error: empty_guess for whitespace-only text", () => {
@@ -329,5 +330,126 @@ describe("roomStore", () => {
     expect(snapshot.guesses).toHaveLength(1);
     expect(snapshot.guesses[0].text).toBe("apple");
     expect(snapshot.guesses[0].isCorrect).toBe(false);
+  });
+
+  // T005 — submitGuess game-end behavior (Scenario 4)
+  it("submitGuess transitions room to 'ended' when guess is correct", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const word = toRoomSnapshot(getRoom(created.room.code)!, created.participantId).currentWord!;
+    submitGuess(created.room.code, joined.participantId, word);
+
+    expect(getRoom(created.room.code)!.status).toBe("ended");
+  });
+
+  it("submitGuess does NOT transition room to 'ended' when guess is incorrect", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    submitGuess(created.room.code, joined.participantId, "wrongword");
+
+    expect(getRoom(created.room.code)!.status).toBe("game");
+  });
+
+  it("submitGuess returns error: not_in_game when room is already in 'ended' state", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    const carol = joinRoom(created.room.code, "Carol") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const word = toRoomSnapshot(getRoom(created.room.code)!, created.participantId).currentWord!;
+    submitGuess(created.room.code, joined.participantId, word);
+
+    const result = submitGuess(created.room.code, carol.participantId, word);
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("not_in_game");
+  });
+
+  // T006 — toRoomSnapshot word reveal behavior (Scenario 4)
+  it("toRoomSnapshot reveals currentWord to non-drawer when status is 'ended'", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const word = toRoomSnapshot(getRoom(created.room.code)!, created.participantId).currentWord!;
+    submitGuess(created.room.code, joined.participantId, word);
+
+    const snapshot = toRoomSnapshot(getRoom(created.room.code)!, joined.participantId);
+    expect(snapshot.currentWord).toBe(word);
+  });
+
+  it("toRoomSnapshot hides currentWord from non-drawer when status is 'game'", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const snapshot = toRoomSnapshot(getRoom(created.room.code)!, joined.participantId);
+    expect(snapshot.currentWord).toBeNull();
+  });
+
+  // T014 — resetRoom tests (Scenario 4)
+  it("resetRoom resets status to 'lobby' and clears strokes, guesses, drawerId, currentWord", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const word = toRoomSnapshot(getRoom(created.room.code)!, created.participantId).currentWord!;
+    addStroke(created.room.code, created.participantId, { points: [{ x: 0.1, y: 0.2 }] });
+    submitGuess(created.room.code, joined.participantId, word);
+
+    const result = resetRoom(created.room.code, created.participantId);
+    expect("error" in result).toBe(false);
+    const room = (result as { room: ReturnType<typeof getRoom> })!.room!;
+    expect(room.status).toBe("lobby");
+    expect(room.drawerId).toBeNull();
+    expect(room.currentWord).toBeNull();
+    expect(room.strokes).toHaveLength(0);
+    expect(room.guesses).toHaveLength(0);
+  });
+
+  it("resetRoom preserves existing participants", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const word = toRoomSnapshot(getRoom(created.room.code)!, created.participantId).currentWord!;
+    submitGuess(created.room.code, joined.participantId, word);
+
+    const result = resetRoom(created.room.code, created.participantId) as { room: ReturnType<typeof getRoom> };
+    expect(result.room!.participants).toHaveLength(2);
+    expect(result.room!.participants.some((p) => p.name === "Alice")).toBe(true);
+    expect(result.room!.participants.some((p) => p.name === "Bob")).toBe(true);
+  });
+
+  it("resetRoom returns error: not_host when caller is not the host", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const word = toRoomSnapshot(getRoom(created.room.code)!, created.participantId).currentWord!;
+    submitGuess(created.room.code, joined.participantId, word);
+
+    const result = resetRoom(created.room.code, joined.participantId);
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("not_host");
+  });
+
+  it("resetRoom returns error: not_ended when room status is not 'ended'", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+    startRoom(created.room.code, created.participantId);
+
+    const result = resetRoom(created.room.code, created.participantId);
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("not_ended");
+  });
+
+  it("resetRoom returns error: room_not_found for unknown code", () => {
+    const result = resetRoom("ZZZZ", "some-id");
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("room_not_found");
   });
 });

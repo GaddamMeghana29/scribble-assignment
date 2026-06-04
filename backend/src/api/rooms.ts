@@ -4,6 +4,7 @@ import {
   createRoomSchema,
   HttpError,
   joinRoomSchema,
+  resetRoomSchema,
   roomCodeParamsSchema,
   roomViewerQuerySchema,
   startRoomSchema,
@@ -14,6 +15,7 @@ import {
   createRoom,
   getRoom,
   joinRoom,
+  resetRoom,
   startRoom,
   submitGuess,
   toRoomSnapshot
@@ -144,6 +146,25 @@ export function createRoomsRouter() {
 
       const { isCorrect, guess } = result as { isCorrect: boolean; guess: GuessEntry };
       response.json({ isCorrect, guess });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/:code/reset", (request, response, next) => {
+    try {
+      const { code } = roomCodeParamsSchema.parse(request.params);
+      const { participantId } = resetRoomSchema.parse(request.body);
+      const result = resetRoom(code.toUpperCase(), participantId);
+
+      if ("error" in result) {
+        if (result.error === "room_not_found") throw new HttpError(404, "Room not found");
+        if (result.error === "not_host") throw new HttpError(403, "Only the host can reset the room");
+        if (result.error === "not_ended") throw new HttpError(400, "Room is not ended");
+      }
+
+      const { room } = result as { room: Parameters<typeof toRoomSnapshot>[0] };
+      response.json({ room: toRoomSnapshot(room, participantId) });
     } catch (error) {
       next(error);
     }

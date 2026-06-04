@@ -22,6 +22,8 @@ export function GamePage() {
   useEffect(() => {
     if (!room) {
       navigate("/", { replace: true });
+    } else if (room.status === "ended") {
+      navigate("/results", { replace: true });
     }
   }, [navigate, room]);
 
