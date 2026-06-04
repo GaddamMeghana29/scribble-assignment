@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createRoom, joinRoom, startRoom } from "./roomStore.js";
+import { createRoom, joinRoom, startRoom, toRoomSnapshot } from "./roomStore.js";
 import { createRoomSchema, joinRoomSchema } from "../api/schemas.js";
+import { STARTER_WORDS } from "../seed/starterData.js";
 
 describe("roomStore", () => {
   // US1 — Host Creates a Room
@@ -106,5 +107,86 @@ describe("roomStore", () => {
 
     expect("error" in result).toBe(true);
     expect((result as { error: string }).error).toBe("room_not_found");
+  });
+
+  // T008 — startRoom mutation tests
+  it("startRoom sets room status to 'game'", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+
+    const result = startRoom(created.room.code, created.participantId) as { room: ReturnType<typeof createRoom>["room"] };
+
+    expect(result.room.status).toBe("game");
+  });
+
+  it("startRoom sets drawerId to the host's participant ID", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+
+    const result = startRoom(created.room.code, created.participantId) as { room: ReturnType<typeof createRoom>["room"] };
+
+    expect(result.room.drawerId).toBe(created.participantId);
+  });
+
+  it("startRoom selects a word from STARTER_WORDS", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+
+    const result = startRoom(created.room.code, created.participantId) as { room: ReturnType<typeof createRoom>["room"] };
+
+    expect(STARTER_WORDS).toContain(result.room.currentWord);
+  });
+
+  it("startRoom with 2 players selects index 2 ('castle')", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+
+    const result = startRoom(created.room.code, created.participantId) as { room: ReturnType<typeof createRoom>["room"] };
+
+    expect(result.room.currentWord).toBe("castle");
+  });
+
+  // T012 — toRoomSnapshot drawerId test
+  it("toRoomSnapshot always includes drawerId for the drawer", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+    const started = startRoom(created.room.code, created.participantId) as { room: ReturnType<typeof createRoom>["room"] };
+
+    const snapshot = toRoomSnapshot(started.room, created.participantId);
+
+    expect(snapshot.drawerId).toBe(created.participantId);
+  });
+
+  // T015 — toRoomSnapshot word filtering tests
+  it("toRoomSnapshot returns currentWord for the drawer", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+    const started = startRoom(created.room.code, created.participantId) as { room: ReturnType<typeof createRoom>["room"] };
+
+    const snapshot = toRoomSnapshot(started.room, created.participantId);
+
+    expect(snapshot.currentWord).toBe("castle");
+  });
+
+  it("toRoomSnapshot returns null currentWord for a guesser", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    const started = startRoom(created.room.code, created.participantId) as { room: ReturnType<typeof createRoom>["room"] };
+
+    const snapshot = toRoomSnapshot(started.room, joined.participantId);
+
+    expect(snapshot.currentWord).toBeNull();
+  });
+
+  it("toRoomSnapshot returns correct wordLength for both viewer types", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    const started = startRoom(created.room.code, created.participantId) as { room: ReturnType<typeof createRoom>["room"] };
+
+    const drawerSnapshot = toRoomSnapshot(started.room, created.participantId);
+    const guesserSnapshot = toRoomSnapshot(started.room, joined.participantId);
+
+    expect(drawerSnapshot.wordLength).toBe("castle".length);
+    expect(guesserSnapshot.wordLength).toBe("castle".length);
   });
 });

@@ -52,6 +52,8 @@ export function createRoom(playerName: string) {
     code: generateUniqueCode(),
     status: "lobby",
     participants: [participant],
+    drawerId: null,
+    currentWord: null,
     createdAt: now(),
     updatedAt: now()
   };
@@ -119,16 +121,25 @@ export function startRoom(code: string, participantId: string) {
     return { error: "too_few_players" as const };
   }
 
+  room.status = "game";
+  room.drawerId = caller.id;
+  room.currentWord = STARTER_WORDS[room.participants.length % STARTER_WORDS.length];
+  room.updatedAt = now();
+  rooms.set(room.code, room);
+
   return { room: cloneRoom(room) };
 }
 
 export function toRoomSnapshot(room: Room, viewerParticipantId?: string): RoomSnapshot {
-  void viewerParticipantId;
+  const isDrawer = viewerParticipantId != null && viewerParticipantId === room.drawerId;
 
   return {
     code: room.code,
     status: room.status,
     participants: room.participants.map((participant) => ({ ...participant })),
+    drawerId: room.drawerId,
+    currentWord: isDrawer ? room.currentWord : null,
+    wordLength: room.currentWord?.length ?? null,
     availableWords: listWords(),
     roles: [...STARTER_ROLES]
   };

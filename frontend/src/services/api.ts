@@ -9,8 +9,11 @@ export interface Participant {
 
 export interface RoomSnapshot {
   code: string;
-  status: "lobby";
+  status: "lobby" | "game";
   participants: Participant[];
+  drawerId: string | null;
+  currentWord: string | null;
+  wordLength: number | null;
   availableWords: string[];
   roles: ParticipantRole[];
 }
