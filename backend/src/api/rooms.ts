@@ -1,13 +1,24 @@
 import { Router } from "express";
 import {
+  addStrokeSchema,
   createRoomSchema,
   HttpError,
   joinRoomSchema,
   roomCodeParamsSchema,
   roomViewerQuerySchema,
-  startRoomSchema
+  startRoomSchema,
+  submitGuessSchema
 } from "./schemas.js";
-import { createRoom, getRoom, joinRoom, startRoom, toRoomSnapshot } from "../services/roomStore.js";
+import {
+  addStroke,
+  createRoom,
+  getRoom,
+  joinRoom,
+  startRoom,
+  submitGuess,
+  toRoomSnapshot
+} from "../services/roomStore.js";
+import type { GuessEntry } from "../models/game.js";
 
 export function createRoomsRouter() {
   const router = Router();
@@ -92,6 +103,47 @@ export function createRoomsRouter() {
       response.json({
         room: toRoomSnapshot(room, participantId)
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/:code/strokes", (request, response, next) => {
+    try {
+      const { code } = roomCodeParamsSchema.parse(request.params);
+      const { participantId, stroke } = addStrokeSchema.parse(request.body);
+      const result = addStroke(code.toUpperCase(), participantId, stroke);
+
+      if ("error" in result) {
+        if (result.error === "room_not_found") throw new HttpError(404, "Room not found");
+        if (result.error === "not_in_game") throw new HttpError(400, "Game has not started");
+        if (result.error === "not_drawer") throw new HttpError(403, "Only the drawer can add strokes");
+      }
+
+      const { room } = result as { room: Parameters<typeof toRoomSnapshot>[0] };
+      response.json({ room: toRoomSnapshot(room, participantId) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/:code/guesses", (request, response, next) => {
+    try {
+      const { code } = roomCodeParamsSchema.parse(request.params);
+      const { participantId, text } = submitGuessSchema.parse(request.body);
+      const result = submitGuess(code.toUpperCase(), participantId, text);
+
+      if ("error" in result) {
+        if (result.error === "room_not_found") throw new HttpError(404, "Room not found");
+        if (result.error === "not_in_game") throw new HttpError(400, "Game has not started");
+        if (result.error === "empty_guess") throw new HttpError(400, "Guess cannot be empty");
+        if (result.error === "drawer_cannot_guess") throw new HttpError(403, "Drawer cannot submit a guess");
+        if (result.error === "already_correct") throw new HttpError(403, "Already guessed correctly");
+        if (result.error === "participant_not_found") throw new HttpError(404, "Participant not found");
+      }
+
+      const { isCorrect, guess } = result as { isCorrect: boolean; guess: GuessEntry };
+      response.json({ isCorrect, guess });
     } catch (error) {
       next(error);
     }

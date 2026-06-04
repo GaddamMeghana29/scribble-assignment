@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createRoom, joinRoom, startRoom, toRoomSnapshot } from "./roomStore.js";
+import { addStroke, createRoom, joinRoom, startRoom, submitGuess, toRoomSnapshot } from "./roomStore.js";
 import { createRoomSchema, joinRoomSchema } from "../api/schemas.js";
 import { STARTER_WORDS } from "../seed/starterData.js";
 
@@ -188,5 +188,146 @@ describe("roomStore", () => {
 
     expect(drawerSnapshot.wordLength).toBe("castle".length);
     expect(guesserSnapshot.wordLength).toBe("castle".length);
+  });
+
+  // T017 / T018 — addStroke tests
+  it("addStroke appends a stroke to room.strokes", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+    startRoom(created.room.code, created.participantId);
+
+    const stroke = { points: [{ x: 0.1, y: 0.2 }, { x: 0.3, y: 0.4 }] };
+    const result = addStroke(created.room.code, created.participantId, stroke) as { room: ReturnType<typeof createRoom>["room"] };
+
+    expect("error" in result).toBe(false);
+    expect(result.room.strokes).toHaveLength(1);
+    expect(result.room.strokes[0].points).toEqual(stroke.points);
+  });
+
+  it("addStroke returns error: not_drawer when caller is not the drawer", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const result = addStroke(created.room.code, joined.participantId, { points: [{ x: 0.1, y: 0.1 }] });
+
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("not_drawer");
+  });
+
+  it("addStroke returns error: not_in_game when room status is not 'game'", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+
+    const result = addStroke(created.room.code, created.participantId, { points: [{ x: 0.1, y: 0.1 }] });
+
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("not_in_game");
+  });
+
+  it("addStroke returns error: room_not_found for unknown code", () => {
+    const result = addStroke("ZZZZ", "some-id", { points: [{ x: 0.1, y: 0.1 }] });
+
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("room_not_found");
+  });
+
+  it("toRoomSnapshot includes strokes array with all committed strokes", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+    startRoom(created.room.code, created.participantId);
+
+    const stroke = { points: [{ x: 0.5, y: 0.5 }] };
+    addStroke(created.room.code, created.participantId, stroke);
+    addStroke(created.room.code, created.participantId, { points: [{ x: 0.1, y: 0.9 }] });
+
+    // fetch fresh room for snapshot
+    const result = addStroke(created.room.code, created.participantId, { points: [{ x: 0.2, y: 0.3 }] }) as { room: ReturnType<typeof createRoom>["room"] };
+    const snapshot = toRoomSnapshot(result.room, created.participantId);
+
+    expect(snapshot.strokes).toHaveLength(3);
+  });
+
+  // T025 / T026 — submitGuess tests
+  it("submitGuess returns isCorrect: true for case-insensitive exact match", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const result = submitGuess(created.room.code, joined.participantId, "CASTLE");
+
+    expect("error" in result).toBe(false);
+    expect((result as { isCorrect: boolean }).isCorrect).toBe(true);
+  });
+
+  it("submitGuess returns isCorrect: false for non-matching guess", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const result = submitGuess(created.room.code, joined.participantId, "apple");
+
+    expect("error" in result).toBe(false);
+    expect((result as { isCorrect: boolean }).isCorrect).toBe(false);
+  });
+
+  it("submitGuess appends a GuessEntry to room.guesses", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const result = submitGuess(created.room.code, joined.participantId, "apple");
+
+    expect("error" in result).toBe(false);
+    expect((result as { guess: { text: string } }).guess.text).toBe("apple");
+    expect((result as { guess: { participantId: string } }).guess.participantId).toBe(joined.participantId);
+  });
+
+  it("submitGuess returns error: drawer_cannot_guess when caller is the drawer", () => {
+    const created = createRoom("Alice");
+    joinRoom(created.room.code, "Bob");
+    startRoom(created.room.code, created.participantId);
+
+    const result = submitGuess(created.room.code, created.participantId, "castle");
+
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("drawer_cannot_guess");
+  });
+
+  it("submitGuess returns error: already_correct when caller already guessed correctly", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    submitGuess(created.room.code, joined.participantId, "castle");
+    const result = submitGuess(created.room.code, joined.participantId, "castle");
+
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("already_correct");
+  });
+
+  it("submitGuess returns error: empty_guess for whitespace-only text", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    const result = submitGuess(created.room.code, joined.participantId, "   ");
+
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toBe("empty_guess");
+  });
+
+  it("toRoomSnapshot includes guesses array with all submitted guesses", () => {
+    const created = createRoom("Alice");
+    const joined = joinRoom(created.room.code, "Bob") as { room: ReturnType<typeof createRoom>["room"]; participantId: string };
+    startRoom(created.room.code, created.participantId);
+
+    submitGuess(created.room.code, joined.participantId, "apple");
+    const stroke = addStroke(created.room.code, created.participantId, { points: [{ x: 0.1, y: 0.1 }] }) as { room: ReturnType<typeof createRoom>["room"] };
+    const snapshot = toRoomSnapshot(stroke.room, joined.participantId);
+
+    expect(snapshot.guesses).toHaveLength(1);
+    expect(snapshot.guesses[0].text).toBe("apple");
+    expect(snapshot.guesses[0].isCorrect).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Participant, Room, RoomSnapshot } from "../models/game.js";
+import type { GuessEntry, Participant, Room, RoomSnapshot, Stroke } from "../models/game.js";
 import { STARTER_ROLES, STARTER_WORDS } from "../seed/starterData.js";
 
 const rooms = new Map<string, Room>();
@@ -54,6 +54,8 @@ export function createRoom(playerName: string) {
     participants: [participant],
     drawerId: null,
     currentWord: null,
+    strokes: [],
+    guesses: [],
     createdAt: now(),
     updatedAt: now()
   };
@@ -124,10 +126,51 @@ export function startRoom(code: string, participantId: string) {
   room.status = "game";
   room.drawerId = caller.id;
   room.currentWord = STARTER_WORDS[room.participants.length % STARTER_WORDS.length];
+  room.strokes = [];
+  room.guesses = [];
   room.updatedAt = now();
   rooms.set(room.code, room);
 
   return { room: cloneRoom(room) };
+}
+
+export function addStroke(code: string, participantId: string, stroke: Stroke) {
+  const room = rooms.get(code);
+  if (!room) return { error: "room_not_found" as const };
+  if (room.status !== "game") return { error: "not_in_game" as const };
+  if (room.drawerId !== participantId) return { error: "not_drawer" as const };
+  room.strokes.push({ points: [...stroke.points] });
+  room.updatedAt = now();
+  rooms.set(room.code, room);
+  return { room: cloneRoom(room) };
+}
+
+export function submitGuess(code: string, participantId: string, text: string) {
+  const room = rooms.get(code);
+  if (!room) return { error: "room_not_found" as const };
+  if (room.status !== "game") return { error: "not_in_game" as const };
+  const trimmed = text.trim();
+  if (!trimmed) return { error: "empty_guess" as const };
+  if (room.drawerId === participantId) return { error: "drawer_cannot_guess" as const };
+  const caller = room.participants.find((p) => p.id === participantId);
+  if (!caller) return { error: "participant_not_found" as const };
+  const alreadyCorrect = room.guesses.some(
+    (g) => g.participantId === participantId && g.isCorrect
+  );
+  if (alreadyCorrect) return { error: "already_correct" as const };
+  const isCorrect =
+    trimmed.toLowerCase() === (room.currentWord ?? "").trim().toLowerCase();
+  const guess: GuessEntry = {
+    participantId,
+    name: caller.name,
+    text: trimmed,
+    isCorrect,
+    submittedAt: now()
+  };
+  room.guesses.push(guess);
+  room.updatedAt = now();
+  rooms.set(room.code, room);
+  return { isCorrect, guess: { ...guess } };
 }
 
 export function toRoomSnapshot(room: Room, viewerParticipantId?: string): RoomSnapshot {
@@ -140,6 +183,8 @@ export function toRoomSnapshot(room: Room, viewerParticipantId?: string): RoomSn
     drawerId: room.drawerId,
     currentWord: isDrawer ? room.currentWord : null,
     wordLength: room.currentWord?.length ?? null,
+    strokes: room.strokes.map((s) => ({ points: [...s.points] })),
+    guesses: room.guesses.map((g) => ({ ...g })),
     availableWords: listWords(),
     roles: [...STARTER_ROLES]
   };

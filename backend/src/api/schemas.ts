@@ -20,6 +20,20 @@ export const roomViewerQuerySchema = z.object({
   participantId: z.string().optional()
 });
 
+export const addStrokeSchema = z.object({
+  participantId: z.string(),
+  stroke: z.object({
+    points: z
+      .array(z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }))
+      .min(1)
+  })
+});
+
+export const submitGuessSchema = z.object({
+  participantId: z.string(),
+  text: z.string()
+});
+
 export class HttpError extends Error {
   statusCode: number;
 
