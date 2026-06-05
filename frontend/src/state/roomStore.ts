@@ -21,7 +21,7 @@ type Listener = () => void;
 class RoomStore {
   private state: RoomState = {
     room: null,
-    participantId: null,
+    participantId: sessionStorage.getItem("scribble_participantId"),
     error: null,
     isLoading: false
   };
@@ -63,6 +63,7 @@ class RoomStore {
   }
 
   setRoomSession(response: RoomSessionResponse) {
+    sessionStorage.setItem("scribble_participantId", response.participantId);
     this.setState({
       participantId: response.participantId,
       room: response.room,
